@@ -41,7 +41,8 @@
   }
   h1{
     font-size:31px;font-weight:900;letter-spacing:-.035em;line-height:1.15;
-    margin:0 0 6px;color:var(--ink)
+    margin:0 0 6px;color:var(--ink);
+    word-break:keep-all      /* 한글이 낱자로 쪼개지지 않게 — 띄어쓰기에서만 줄바꿈 */
   }
   @supports (-webkit-background-clip:text) or (background-clip:text){
     h1{
@@ -64,8 +65,8 @@
   .today-btn{width:auto!important;padding:0 12px;font-size:13px!important}
 
   /* 범례 */
-  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--sub);align-items:center;margin:0 0 14px;padding-left:2px}
-  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--sub);align-items:center;margin:0 0 14px;padding-left:2px}
+  .legend span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
   .legend b{color:var(--ink);font-weight:700}
   .sw{flex:none;border:2px solid var(--line);background:#fff;display:inline-flex;align-items:center;justify-content:center;position:relative}
   .sw.p{width:26px;height:20px;border-radius:7px;border-style:dashed;border-color:#9aa3b8;background:#f6f7fb}
@@ -224,8 +225,9 @@
   /* 월간 달력 */
   .mhead{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
   #monthLabel{min-width:110px;text-align:center;font-weight:700;font-size:14px}
-  .mlegend{display:flex;gap:15px;flex-wrap:wrap;font-size:12px;color:var(--sub);align-items:center;margin:0 0 14px;padding-left:2px}
-  .mlegend span{display:inline-flex;align-items:center;gap:6px}
+  .mlegend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--sub);align-items:center;margin:0 0 10px;padding-left:2px}
+  .mlegend span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .chiporder{font-size:11.5px;color:#9aa3b8;margin:0 0 14px;padding-left:2px}
   .mlegend i{width:13px;height:13px;border-radius:4px;display:inline-block;border:1.5px solid var(--line);background:#fff;position:relative;flex:none}
   .mlegend i.pl{border-style:dashed;border-color:#9aa3b8;background:#f6f7fb}
   .mlegend i.dn{background:#6b7488;border-color:#6b7488}
@@ -342,8 +344,8 @@
   @media(max-width:560px){
     body{padding:22px 14px 48px}
 
-    h1{font-size:26px}
-    .tagline{font-size:12px;line-height:1.5}
+    h1{font-size:24px}
+    .tagline{font-size:12px;line-height:1.5;word-break:keep-all}
     header{gap:12px;margin-bottom:16px}
     .weeknav{width:100%}
     #weekLabel{min-width:0;flex:1}
@@ -352,8 +354,7 @@
     .tab{flex:1;padding:11px 8px;font-size:13px}
     .tabaction{padding:8px 12px;margin-bottom:6px;font-size:12px}
 
-    .legend{gap:8px;margin-bottom:14px}
-    .legend span{width:100%}
+    .legend{gap:11px;font-size:11.5px;margin-bottom:12px}
 
     /* 손가락으로 누르기 쉽게 살짝 키움 */
     .cd{width:34px;height:34px;font-size:16px}
@@ -416,8 +417,8 @@
 
     .mhead{gap:10px}
     #monthLabel{min-width:0;flex:1}
-    .mlegend{gap:8px;font-size:11.5px}
-    .mlegend span{width:100%}
+    .mlegend{gap:11px;font-size:11.5px;margin-bottom:8px}
+    .chiporder{font-size:11px;margin-bottom:12px}
   }
 </style>
 </head>
@@ -489,8 +490,8 @@
   <div class="cards" id="cards"></div>
 
   <div class="legend">
-    <span><i class="sw p"></i><b>계획</b> — 윗줄, 미래 날짜도 미리 입력</span>
-    <span><i class="sw d">&#10003;</i><b>실제</b> — 아랫줄, 실제로 한 날 체크</span>
+    <span><i class="sw p"></i>계획</span>
+    <span><i class="sw d">&#10003;</i>실제</span>
     <span><i class="sw x">&#10003;</i>계획 없이 한 운동</span>
   </div>
 
@@ -524,11 +525,11 @@
     <div class="mcards" id="mcards"></div>
 
     <div class="mlegend">
-      <span><i class="pl"></i>계획만</span>
-      <span><i class="dn"></i>실제로 함</span>
-      <span><i class="ex"></i>계획 없이 함</span>
-      <span id="chipOrder"></span>
+      <span><i class="pl"></i>계획</span>
+      <span><i class="dn"></i>실제</span>
+      <span><i class="ex"></i>계획 없이 한 운동</span>
     </div>
+    <p class="chiporder" id="chipOrder"></p>
 
     <p class="swipe swipe-cal">달력이 넓습니다 &mdash; 좌우로 넘겨 보세요 &rarr;</p>
     <div class="calpanel">
