@@ -51,6 +51,8 @@
     }
   }
   .tagline{color:var(--sub);font-size:12.5px;font-weight:600;margin:0;letter-spacing:-.01em}
+  /* 운동 하나는 통째로 한 줄에 — 줄이 바뀔 때 마지막 운동이 다음 줄로 내려간다 */
+  .tagline .rl{white-space:nowrap}
 
   .weeknav{display:flex;align-items:center;gap:8px}
   .weeknav button{
@@ -62,7 +64,7 @@
   .today-btn{width:auto!important;padding:0 12px;font-size:13px!important}
 
   /* 범례 */
-  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--sub);align-items:center;margin-bottom:16px}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--sub);align-items:center;margin:0 0 14px;padding-left:2px}
   .legend span{display:inline-flex;align-items:center;gap:7px}
   .legend b{color:var(--ink);font-weight:700}
   .sw{flex:none;border:2px solid var(--line);background:#fff;display:inline-flex;align-items:center;justify-content:center;position:relative}
@@ -220,9 +222,9 @@
   .lbl-short{display:none}
 
   /* 월간 달력 */
-  .mhead{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+  .mhead{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
   #monthLabel{min-width:110px;text-align:center;font-weight:700;font-size:14px}
-  .mlegend{display:flex;gap:15px;flex-wrap:wrap;font-size:12px;color:var(--sub);align-items:center}
+  .mlegend{display:flex;gap:15px;flex-wrap:wrap;font-size:12px;color:var(--sub);align-items:center;margin:0 0 14px;padding-left:2px}
   .mlegend span{display:inline-flex;align-items:center;gap:6px}
   .mlegend i{width:13px;height:13px;border-radius:4px;display:inline-block;border:1.5px solid var(--line);background:#fff;position:relative;flex:none}
   .mlegend i.pl{border-style:dashed;border-color:#9aa3b8;background:#f6f7fb}
@@ -484,13 +486,13 @@
   </div>
 
   <div id="viewWeek">
+  <div class="cards" id="cards"></div>
+
   <div class="legend">
     <span><i class="sw p"></i><b>계획</b> — 윗줄, 미래 날짜도 미리 입력</span>
     <span><i class="sw d">&#10003;</i><b>실제</b> — 아랫줄, 실제로 한 날 체크</span>
     <span><i class="sw x">&#10003;</i>계획 없이 한 운동</span>
   </div>
-
-  <div class="cards" id="cards"></div>
 
   <p class="swipe swipe-tbl">표가 넓습니다 &mdash; 좌우로 넘겨 보세요 &rarr;</p>
   <div class="panel">
@@ -517,15 +519,16 @@
         <button id="nextMonth" title="다음 달">&#10095;</button>
         <button id="thisMonth" class="today-btn">이번 달</button>
       </div>
-      <div class="mlegend">
-        <span><i class="pl"></i>계획만</span>
-        <span><i class="dn"></i>실제로 함</span>
-        <span><i class="ex"></i>계획 없이 함</span>
-        <span id="chipOrder"></span>
-      </div>
     </div>
 
     <div class="mcards" id="mcards"></div>
+
+    <div class="mlegend">
+      <span><i class="pl"></i>계획만</span>
+      <span><i class="dn"></i>실제로 함</span>
+      <span><i class="ex"></i>계획 없이 함</span>
+      <span id="chipOrder"></span>
+    </div>
 
     <p class="swipe swipe-cal">달력이 넓습니다 &mdash; 좌우로 넘겨 보세요 &rarr;</p>
     <div class="calpanel">
@@ -692,9 +695,13 @@ function applyIdentity(){
   var who = setup.name ? setup.name + '님의 운동 루틴' : '운동 루틴 체크';
   document.getElementById('appTitle').textContent = who;
   document.title = who;
-  document.getElementById('appRule').innerHTML = GOALS.map(function(g){
-    return g.name + ' ' + (g.target >= 7 ? '매일' : '주 ' + g.target + '회 이상');
-  }).join(' &middot; ');
+  var last = GOALS.length - 1;
+  document.getElementById('appRule').innerHTML = GOALS.map(function(g,i){
+    /* 구분점을 앞 운동에 붙여 두면, 줄이 바뀔 때 점이 줄 앞에 남지 않는다 */
+    return '<span class="rl">' + g.name + ' '
+      + (g.target >= 7 ? '매일' : '주 ' + g.target + '회 이상')
+      + (i < last ? ' &middot;' : '') + '</span>';
+  }).join(' ');
   document.getElementById('chipOrder').textContent =
     '칸 순서 = ' + GOALS.map(function(g){ return g.name; }).join(' · ');
 
