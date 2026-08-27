@@ -212,6 +212,12 @@
   }
   .tabaction:hover{background:#2b3350;border-color:#2b3350;box-shadow:0 3px 9px rgba(28,34,51,.26)}
   .tabaction .gear{font-size:13.5px;line-height:1;display:inline-block}
+  /* 제목 옆에 놓이는 같은 버튼 — 좁은 화면에서만 보인다 */
+  .tabaction-top{display:none;align-self:center}
+  .is-hidden{display:none!important}
+
+  /* 버튼 글자 — 좁은 화면에서는 짧은 쪽을 쓴다 */
+  .lbl-short{display:none}
 
   /* 월간 달력 */
   .mhead{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
@@ -382,10 +388,29 @@
     /* iOS 는 16px 미만 입력칸을 탭하면 화면을 확대하므로 16px 유지 */
     .codebox textarea{height:150px;font-size:16px;line-height:1.5}
 
+    /* 운동 설정 버튼을 제목 옆으로 */
+    #setupBtn{display:none}
+    .tabaction-top{display:inline-flex;margin-bottom:0;padding:7px 12px;font-size:12px}
+    /* 제목 칸이 줄어들 수 있어야 버튼이 같은 줄에 남는다 (설명은 두 줄로 접힘) */
+    .title{flex:1;min-width:0}
+
+    /* 버튼 글자 짧게 */
+    .lbl-full{display:none}
+    .lbl-short{display:inline}
+
     .setupcard{padding:18px 16px 16px}
-    .srow{grid-template-columns:22px 1fr 104px;gap:6px}
-    .sinput,.srow select{font-size:16px}   /* iOS 확대 방지 */
-    .sbtns{display:grid;grid-template-columns:1fr 1fr}
+    .srow{grid-template-columns:22px 1fr 98px;gap:6px;margin-bottom:7px}
+    /* 입력 칸 글자 — 아이폰은 16px 미만이면 화면을 확대해 버리므로 그대로 두고,
+       그 외 기기에서만 조금 작게 (아래 스크립트가 html 에 smallfield 를 붙인다) */
+    .sinput,.srow select{font-size:16px}
+    html.smallfield .sinput{font-size:13.5px;padding:9px 11px}
+    html.smallfield .srow select{font-size:12.5px;padding:9px 6px}
+    html.smallfield .srow{grid-template-columns:22px 1fr 92px}
+
+    /* 저장 / 초기화 / 취소 를 한 줄에 */
+    .sbtns{display:flex;gap:6px}
+    .sbtns .sb{flex:1;padding:10px 4px;font-size:12.5px;white-space:nowrap}
+    .sbtns .sb.primary{padding:10px 6px}
 
     .mhead{gap:10px}
     #monthLabel{min-width:0;flex:1}
@@ -401,6 +426,10 @@
       <h1 id="appTitle">운동 루틴 체크</h1>
       <p class="tagline" id="appRule">&nbsp;</p>
     </div>
+    <button class="tabaction tabaction-top js-setup" id="setupBtnTop"
+            title="운동 이름과 주간 목표를 바꿉니다">
+      <span class="gear">&#9881;</span>운동 설정
+    </button>
     <div class="weeknav" id="weekNav">
       <button id="prevWeek" title="이전 주">&#10094;</button>
       <div id="weekLabel"></div>
@@ -437,7 +466,8 @@
       <p id="suMsg" class="cbmsg">&nbsp;</p>
       <div class="sbtns">
         <button id="suSave" class="sb primary">저장하고 시작</button>
-        <button id="suReset" class="sb">기본값으로 되돌리기</button>
+        <button id="suReset" class="sb"><span class="lbl-full">기본값으로 되돌리기</span><span
+          class="lbl-short">초기화</span></button>
         <button id="suCancel" class="sb" hidden>취소</button>
       </div>
       <p class="snote" id="suNote"></p>
@@ -448,7 +478,7 @@
   <div class="tabs">
     <button id="tabWeek" class="tab on">주간 체크</button>
     <button id="tabMonth" class="tab">월간 달력</button>
-    <button id="setupBtn" class="tabaction" title="운동 이름과 주간 목표를 바꿉니다">
+    <button id="setupBtn" class="tabaction js-setup" title="운동 이름과 주간 목표를 바꿉니다">
       <span class="gear">&#9881;</span>운동 설정
     </button>
   </div>
@@ -552,6 +582,15 @@
 </div>
 
 <script>
+/* 아이폰/아이패드는 16px 미만 입력칸을 누르면 화면을 확대한다.
+   그 외 기기에서만 설정 입력칸 글자를 조금 작게 쓴다. */
+(function(){
+  var ua = navigator.userAgent || '';
+  var isIOS = /iPad|iPhone|iPod/.test(ua)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if(!isIOS) document.documentElement.className += ' smallfield';
+})();
+
 var STORE_KEY = 'workoutCheck.v2';
 var OLD_KEY   = 'workoutCheck.v1';
 var STAMP_KEY = 'workoutCheck.savedAt';
@@ -780,12 +819,15 @@ function openSetup(firstRun){
   document.getElementById('setup').hidden = false;
   document.getElementById('app').hidden = true;
   document.getElementById('weekNav').style.display = 'none';
+  /* 제목 옆 버튼도 설정 화면에서는 감춘다 */
+  document.getElementById('setupBtnTop').classList.add('is-hidden');
 }
 
 function closeSetup(){
   document.getElementById('setup').hidden = true;
   document.getElementById('app').hidden = false;
   document.getElementById('weekNav').style.display = (view === 'week') ? '' : 'none';
+  document.getElementById('setupBtnTop').classList.remove('is-hidden');
 }
 
 function setupMsg(text, bad){
@@ -1455,7 +1497,9 @@ document.getElementById('resetBtn').onclick = function(){
   }
 };
 
-document.getElementById('setupBtn').onclick = function(){ openSetup(false); };
+Array.prototype.forEach.call(document.querySelectorAll('.js-setup'), function(b){
+  b.onclick = function(){ openSetup(false); };
+});
 document.getElementById('suSave').onclick   = saveSetupFromForm;
 document.getElementById('suCancel').onclick = function(){ closeSetup(); };
 document.getElementById('suReset').onclick = function(){
