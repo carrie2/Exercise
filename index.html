@@ -312,6 +312,15 @@
     border:1px solid var(--line);border-radius:10px;padding:10px 8px;width:100%
   }
   .srow select:focus{outline:none;border-color:#8f9ff0}
+  /* 사용자 고르기 */
+  .upick{display:flex;gap:6px;flex-wrap:wrap}
+  .upick button{
+    font-family:inherit;font-size:12.5px;font-weight:700;color:var(--sub);
+    border:1px solid var(--line);background:#fff;border-radius:99px;padding:7px 13px;cursor:pointer
+  }
+  .upick button:hover{color:var(--ink);border-color:#c7cee0}
+  .upick button.on{background:var(--ink);border-color:var(--ink);color:#fff;cursor:default}
+
   .sbtns{display:flex;gap:8px;margin-top:16px}
   .sb.primary{background:var(--ink);border-color:var(--ink);color:#fff;font-weight:700;padding:10px 18px}
   .sb.primary:hover{color:#fff;background:#2b3350}
@@ -455,10 +464,15 @@
         이름과 운동을 정하면 바로 시작합니다. 나중에 언제든 바꿀 수 있습니다.
       </p>
 
+      <div class="sfield" id="userPickWrap" hidden>
+        <span>저장된 사용자 <small>(눌러서 전환)</small></span>
+        <div class="upick" id="userPick"></div>
+      </div>
+
       <label class="sfield">
-        <span>이름 <small>(선택 &mdash; 비워 두어도 됩니다)</small></span>
+        <span>이름 <small>(사용자 구분 &mdash; 이름을 바꾸면 그 사람 기록으로 바뀝니다)</small></span>
         <input type="text" id="suName" class="sinput" maxlength="12"
-               autocapitalize="off" autocorrect="off" autocomplete="off" placeholder="예: 서정">
+               autocapitalize="off" autocorrect="off" autocomplete="off" placeholder="예: hello">
       </label>
 
       <div class="sfield">
@@ -577,7 +591,8 @@
   </div>
 
   <p class="note">
-    기록은 이 브라우저에 자동 저장되어 페이지를 닫아도 남습니다.
+    기록은 <b>사용자 이름별로</b> 나뉘어 이 브라우저에 자동 저장됩니다.
+    위쪽 <b>운동 설정</b>에서 이름을 바꾸면 그 사람 기록으로 전환됩니다.<br>
     브라우저를 바꾸거나 사이트 데이터를 지우면 사라지므로, 가끔 <b>백업 저장</b>으로 파일을 받아두면 안전합니다.<br>
     다른 컴퓨터에서 이어서 쓰려면 <b>코드로 옮기기</b>(텍스트 복사·붙여넣기) 또는
     <b>백업 저장 &rarr; 백업 불러오기</b>(파일)를 이용하세요.
@@ -595,10 +610,11 @@
   if(!isIOS) document.documentElement.className += ' smallfield';
 })();
 
-var STORE_KEY = 'workoutCheck.v2';
-var OLD_KEY   = 'workoutCheck.v1';
+var USERS_KEY = 'workoutCheck.users';   /* 지금 쓰는 저장 형식 (사용자별) */
+var STORE_KEY = 'workoutCheck.v2';      /* 예전 형식 — 옮겨오기용 */
+var OLD_KEY   = 'workoutCheck.v1';      /* 더 예전 형식 */
+var SETUP_KEY = 'workoutCheck.setup';   /* 예전 형식의 운동 설정 */
 var STAMP_KEY = 'workoutCheck.savedAt';
-var SETUP_KEY = 'workoutCheck.setup';
 var DAYS = ['월','화','수','목','금','토','일'];
 var MAX_GOALS = 3;
 /* 운동 칸 순서대로 쓰는 색 */
@@ -620,17 +636,22 @@ var DEFAULTS = { name:'hello', goals:[
   { name:'헬스',     target:3 }
 ]};
 
-var setup = null;      /* { name, goals:[{id,name,target}] } */
+/* all = { current:'jeong', users:{ 'jeong':{goals,retired,data}, '서정':{...} } }
+   사용자 이름이 곧 사용자 구분이다. 이름이 비어 있으면 키도 '' 하나를 쓴다. */
+var all = { current:'', users:{} };
+var setup = null;      /* 지금 사용자의 { name, goals, retired } */
 var GOALS = [];        /* 화면에서 쓰는 형태 (색·안내문 포함) */
+var data = {};         /* 지금 사용자의 기록 — all.users[current].data 와 같은 객체 */
 
-var data = load();
 var anchor = mondayOf(new Date());
 var monthAnchor = firstOfMonth(new Date());
 var view = 'week';
 
-/* ---------- 저장 / 이전 버전 이관 ---------- */
+/* ---------- 저장 ---------- */
 /* 셀 값 구조: { p:true(계획), d:true(실제) } — 두 값은 서로 독립 */
-function load(){
+
+/* 예전 형식(사용자 구분 없던 시절)의 기록 읽기 */
+function loadLegacyData(){
   try{
     var raw = localStorage.getItem(STORE_KEY);
     if(raw) return JSON.parse(raw) || {};
@@ -646,40 +667,132 @@ function load(){
     return out;
   }catch(e){ return {}; }
 }
-/* ---------- 운동 설정 ---------- */
-function loadSetup(){
+
+function normData(d){
+  var out = {};
+  if(!d) return out;
+  Object.keys(d).forEach(function(dk){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(dk)) return;
+    var day = {};
+    Object.keys(d[dk] || {}).forEach(function(g){
+      var v = d[dk][g];
+      if(!v) return;
+      var c = {};
+      if(v === true) c.d = true;
+      else { if(v.p) c.p = true; if(v.d) c.d = true; }
+      if(c.p || c.d) day[g] = c;
+    });
+    if(Object.keys(day).length) out[dk] = day;
+  });
+  return out;
+}
+
+/* 저장된 운동 목록 형식 검사 */
+function normGoals(list, limit){
+  var out = [], seenId = {};
+  (list || []).forEach(function(g){
+    if(out.length >= limit) return;
+    if(!g || !g.id || !g.name) return;
+    if(seenId[g.id]) return;      /* 아이디가 겹치면 두 운동이 같이 체크된다 */
+    seenId[g.id] = 1;
+    var t = parseInt(g.target, 10);
+    if(!(t >= 1 && t <= 7)) t = 1;
+    out.push({ id:String(g.id), name:String(g.name), target:t, names:nameList(g) });
+  });
+  return out;
+}
+
+/* 전체 불러오기 (없으면 예전 형식에서 옮겨온다) */
+function loadAll(){
+  var out = { current:'', users:{} };
   try{
-    var raw = localStorage.getItem(SETUP_KEY);
-    if(!raw) return null;
-    var o = JSON.parse(raw);
-    if(!o || !o.goals || !o.goals.length) return null;
-    /* 형식 검사 — 이상한 값은 걸러 낸다 */
-    var goals = [];
-    for(var i=0; i<o.goals.length && goals.length < MAX_GOALS; i++){
-      var g = o.goals[i];
-      if(!g || !g.id || !g.name) continue;
-      var t = parseInt(g.target, 10);
-      if(!(t >= 1 && t <= 7)) t = 1;
-      goals.push({ id:String(g.id), name:String(g.name), target:t });
-    }
-    if(!goals.length) return null;
-    /* 목록에서 뺀 운동 — 같은 이름으로 다시 넣으면 기록을 되찾기 위해 보관 */
-    var retired = [];
-    if(o.retired && o.retired.length){
-      for(var j=0; j<o.retired.length && retired.length < 10; j++){
-        var r = o.retired[j];
-        if(!r || !r.id || !r.name) continue;
-        var rt = parseInt(r.target, 10);
-        if(!(rt >= 1 && rt <= 7)) rt = 1;
-        retired.push({ id:String(r.id), name:String(r.name), target:rt });
+    var raw = localStorage.getItem(USERS_KEY);
+    if(raw){
+      var o = JSON.parse(raw);
+      if(o && o.users){
+        Object.keys(o.users).forEach(function(nm){
+          var u = o.users[nm] || {};
+          var goals = normGoals(u.goals, MAX_GOALS);
+          if(!goals.length) return;
+          out.users[String(nm)] = { goals:goals, retired:normGoals(u.retired, 10), data:normData(u.data) };
+        });
+        var keys = Object.keys(out.users);
+        if(keys.length){
+          out.current = (o.current !== undefined && out.users[String(o.current)]) ? String(o.current) : keys[0];
+          return out;
+        }
       }
     }
-    return { name: o.name ? String(o.name) : '', goals: goals, retired: retired };
-  }catch(e){ return null; }
+  }catch(e){}
+
+  /* 예전 형식 옮겨오기 */
+  try{
+    var lsRaw = localStorage.getItem(SETUP_KEY);
+    var ls = lsRaw ? JSON.parse(lsRaw) : null;
+    var ld = loadLegacyData();
+    var goals2 = ls ? normGoals(ls.goals, MAX_GOALS) : [];
+    if(!goals2.length && Object.keys(ld).length) goals2 = normGoals(LEGACY.goals, MAX_GOALS);
+    if(goals2.length){
+      var nm2 = (ls && ls.name) ? String(ls.name) : '';
+      out.users[nm2] = { goals:goals2, retired: ls ? normGoals(ls.retired, 10) : [], data:ld };
+      out.current = nm2;
+    }
+  }catch(e){}
+  return out;
 }
+
+/* 지금 사용자를 화면 변수에 연결 */
+function bindCurrent(){
+  var u = all.users[all.current];
+  if(!u){ setup = null; data = {}; GOALS = []; return; }
+  data  = u.data;
+  setup = { name: all.current, goals: u.goals, retired: u.retired };
+  GOALS = buildGoals();
+}
+
+function userLabel(k){ return k === '' ? '(이름 없음)' : k; }
+function userNames(){ return Object.keys(all.users); }
+/* ---------- 운동 설정 ---------- */
+/* 한 운동 칸이 지금까지 쓴 이름들 — 예전 이름을 다시 넣으면 그 기록을 되찾는다 */
+function nameList(g){
+  var out = [], seen = {};
+  var src = (g.names && g.names.length) ? g.names : [];
+  src.concat([g.name]).forEach(function(n){
+    n = String(n || '').trim();
+    if(!n || seen[n]) return;
+    seen[n] = 1;
+    out.push(n);
+  });
+  return out.slice(-6);
+}
+
+/* 저장소에서 지금 사용자의 설정을 다시 읽어 온다 */
+function loadSetup(){
+  var fresh = loadAll();
+  if(!Object.keys(fresh.users).length) return null;
+  /* 지금 보고 있던 사용자가 저장소에도 있으면 그 사용자를 유지한다 */
+  if(all.current && fresh.users[all.current]) fresh.current = all.current;
+  all = fresh;
+  bindCurrent();
+  return setup;
+}
+
+/* 지금 사용자의 설정을 전체 저장소에 반영 */
 function saveSetup(){
-  try{ localStorage.setItem(SETUP_KEY, JSON.stringify(setup)); }
-  catch(e){ /* 저장이 막힌 브라우저 — 이번 세션 동안만 유지된다 */ }
+  if(!setup) return;
+  all.users[all.current] = { goals:setup.goals, retired:setup.retired || [], data:data };
+  save();
+}
+
+/* 사용자 전환 */
+function switchUser(key){
+  if(!all.users[key]) return false;
+  all.current = key;
+  bindCurrent();
+  save();
+  applyIdentity();
+  render();
+  return true;
 }
 function ruleText(t){ return t >= 7 ? '매일 (주 7회)' : '주 ' + t + '회 이상'; }
 
@@ -732,9 +845,9 @@ function save(){
     return;
   }
   try{
-    localStorage.setItem(STORE_KEY, JSON.stringify(data));
+    localStorage.setItem(USERS_KEY, JSON.stringify(all));
     /* 정말 들어갔는지 되읽어 확인 */
-    if(localStorage.getItem(STORE_KEY) === null) throw new Error('write failed');
+    if(localStorage.getItem(USERS_KEY) === null) throw new Error('write failed');
     localStorage.setItem(STAMP_KEY, String(Date.now()));
     setStatus(true, '저장됨 ' + timeText(new Date()));
   }catch(e){
@@ -772,6 +885,32 @@ function targetOptions(sel){
   return out;
 }
 
+function renderUserPick(){
+  var wrap = document.getElementById('userPickWrap');
+  var box = document.getElementById('userPick');
+  var keys = userNames();
+  if(keys.length < 2){ wrap.hidden = true; box.innerHTML = ''; return; }
+  wrap.hidden = false;
+  box.innerHTML = keys.map(function(k){
+    var on = (k === all.current);
+    var n = Object.keys(all.users[k].data || {}).length;
+    return '<button type="button" data-user="' + k.replace(/"/g,'&quot;') + '"'
+      + (on ? ' class="on" disabled' : '')
+      + ' title="' + userLabel(k) + ' — 기록 ' + n + '일">'
+      + userLabel(k) + (on ? ' (지금)' : '') + '</button>';
+  }).join('');
+  Array.prototype.forEach.call(box.querySelectorAll('button[data-user]'), function(b){
+    b.onclick = function(){
+      var k = b.getAttribute('data-user');
+      if(k === all.current) return;
+      if(!confirm(userLabel(k) + ' 사용자로 바꿀까요?')) return;
+      switchUser(k);
+      closeSetup();
+      setStatus(canStore, userLabel(k) + ' 사용자로 바꿨습니다');
+    };
+  });
+}
+
 function renderSetupForm(){
   var rows = '';
   for(var i=0; i<MAX_GOALS; i++){
@@ -792,6 +931,7 @@ function renderSetupForm(){
   }
   document.getElementById('suGoals').innerHTML = rows;
   document.getElementById('suName').value = setup ? (setup.name || '') : DEFAULTS.name;
+  renderUserPick();
 }
 
 /* 설정 칸을 처음 상태(기본값)로 되돌린다. 저장을 누를 때까지 실제로 바뀌지는 않는다. */
@@ -804,11 +944,22 @@ function fillDefaults(){
     rows[i].querySelector('.sname').value = d ? d.name : '';
     rows[i].querySelector('.starget').value = d ? String(d.target) : '2';
   }
-  document.getElementById('suName').value = DEFAULTS.name;
+  /* 사용자 이름은 건드리지 않는다 — 초기화는 운동 목록만 처음 상태로 */
+  document.getElementById('suName').value = setup ? (setup.name || '') : DEFAULTS.name;
 }
 
 function openSetup(firstRun){
   setupFirstRun = !!firstRun;
+  /* 저장된 설정을 다시 읽어 온다 — 다른 탭에서 바꿨거나 화면이 뒤처진 경우 대비 */
+  if(!firstRun){
+    var fresh = loadSetup();
+    if(fresh){
+      setup = fresh;
+      GOALS = buildGoals();
+      applyIdentity();
+      render();
+    }
+  }
   renderSetupForm();
   document.getElementById('setupHead').textContent = firstRun ? '시작 설정' : '운동 설정';
   document.getElementById('setupDesc').innerHTML = firstRun
@@ -819,9 +970,12 @@ function openSetup(firstRun){
   document.getElementById('suCancel').hidden = !!firstRun;
   document.getElementById('suNote').innerHTML = firstRun
     ? '목표는 한 주에 몇 번 할지를 뜻합니다. 매일 하는 운동은 <b>매일 (주 7회)</b>을 고르세요.'
-    : '이름만 바꾸면 기록은 그대로 따라갑니다. 칸을 비우면 그 운동은 화면에서 사라지지만 '
+    : '<b>이름은 사용자 구분입니다.</b> 다른 이름을 적으면 그 사람 기록으로 바뀌고, '
+      + '처음 보는 이름이면 빈 기록으로 새로 시작합니다. 예전 이름을 다시 적으면 그 기록으로 돌아옵니다.<br>'
+      + '칸을 비우면 그 운동은 화면에서 사라지지만 '
       + '기록이 지워지는 것은 아니며, 다시 넣으면 되돌아옵니다.<br>'
-      + '<b>기본값으로 되돌리기</b>는 칸만 처음 상태로 채웁니다. '
+      + '예전에 쓰던 이름을 다시 넣어도 그 이름으로 쌓았던 기록을 되찾습니다.<br>'
+      + '<b>기본값으로 되돌리기</b>는 운동 칸만 처음 상태로 채웁니다(사용자 이름은 그대로). '
       + '실제로 바뀌는 것은 <b>저장</b>을 누른 뒤이고, 그 전에는 <b>취소</b>로 되돌릴 수 있습니다.';
   setupMsg('');
   document.getElementById('setup').hidden = false;
@@ -856,17 +1010,42 @@ function newGoalId(used){
   return 'g' + (new Date().getTime());
 }
 
+/* 지금까지 쓴 이름 → 그 운동 칸  (예전 이름도 포함) */
+function buildNameIndex(list){
+  var m = {};
+  (list || []).forEach(function(g){
+    nameList(g).forEach(function(n){ if(!m[n]) m[n] = g; });
+  });
+  return m;
+}
+/* 아이디로 예전 기록(이름 이력)을 찾는다 */
+function findPrevGoal(id){
+  if(!setup) return null;
+  var all = setup.goals.concat(setup.retired || []);
+  for(var i=0; i<all.length; i++){ if(all[i].id === id) return all[i]; }
+  return null;
+}
+
 function saveSetupFromForm(){
   var rows = document.querySelectorAll('#suGoals .srow');
-  var goals = [], usedIds = [], names = {};
+  var picked = [], names = {};
+  var newKey = document.getElementById('suName').value.trim();
+  var curKey = all.current;
+  var switching = (setup && newKey !== curKey && !!all.users[newKey]);
 
-  /* 이름으로 원래 아이디를 되찾을 수 있게 준비 */
-  var activeByName = {}, retiredByName = {};
-  if(setup){
-    setup.goals.forEach(function(g){ activeByName[g.name] = g; });
-    (setup.retired || []).forEach(function(r){ retiredByName[r.name] = r; });
+  /* 0) 이름이 이미 있는 사용자면 그 사용자로 전환한다 (운동 칸은 그 사용자 것을 따른다) */
+  if(switching){
+    if(!confirm(userLabel(newKey) + ' 사용자로 바꿀까요?\n\n'
+      + '[확인] ' + userLabel(newKey) + ' 의 운동과 기록으로 전환합니다\n'
+      + '        (지금 입력한 운동 내용은 적용하지 않습니다)\n'
+      + '[취소] 그대로 두기')) return;
+    switchUser(newKey);
+    closeSetup();
+    setStatus(canStore, userLabel(newKey) + ' 사용자로 바꿨습니다');
+    return;
   }
 
+  /* 1) 입력값 검사 */
   for(var i=0; i<rows.length; i++){
     var nameEl = rows[i].querySelector('.sname');
     var nm = nameEl.value.replace(/\s+/g,' ').trim();
@@ -875,19 +1054,62 @@ function saveSetupFromForm(){
     names[nm] = 1;
     var t = parseInt(rows[i].querySelector('.starget').value, 10);
     if(!(t >= 1 && t <= 7)) t = 1;
-    /* ① 원래 그 칸의 아이디 → ② 지금 쓰는 같은 이름 → ③ 전에 빼 둔 같은 이름 → ④ 새 아이디 */
-    var gid = rows[i].getAttribute('data-gid')
-      || (activeByName[nm] && activeByName[nm].id)
-      || (retiredByName[nm] && retiredByName[nm].id)
-      || newGoalId(usedIds);
-    usedIds.push(gid);
-    goals.push({ id:gid, name:nm, target:t });
+    picked.push({ name:nm, target:t, gid:rows[i].getAttribute('data-gid') || '' });
   }
+
+  /* 2) 아이디 정하기 — 같은 아이디를 두 운동이 함께 쓰지 않도록 두 번에 나눠 처리 */
+  var used = {}, usedIds = [];
+  /* 2-1) 원래 그 칸에 있던 아이디를 먼저 확정 */
+  picked.forEach(function(g){
+    if(g.gid && !used[g.gid]){ used[g.gid] = 1; usedIds.push(g.gid); }
+    else g.gid = '';
+  });
+  /* 2-2) 남은 칸은 이름(지금 이름 + 예전에 쓰던 이름)으로 원래 아이디를 찾는다 */
+  var activeIdx  = buildNameIndex(setup ? setup.goals : []);
+  var retiredIdx = buildNameIndex(setup ? setup.retired : []);
+  picked.forEach(function(g){
+    if(g.gid) return;
+    var cand = (activeIdx[g.name] && activeIdx[g.name].id)
+            || (retiredIdx[g.name] && retiredIdx[g.name].id);
+    if(cand && !used[cand]) g.gid = cand;
+    else g.gid = newGoalId(usedIds);
+    used[g.gid] = 1;
+    usedIds.push(g.gid);
+  });
+
+  /* 3) 이름 이력을 이어 붙인다 */
+  var goals = picked.map(function(g){
+    var prev = findPrevGoal(g.gid);
+    var hist = prev ? nameList(prev) : [];
+    if(hist.indexOf(g.name) < 0) hist = hist.concat([g.name]);
+    return { id:g.gid, name:g.name, target:g.target, names:hist.slice(-6) };
+  });
 
   if(!goals.length){
     setupMsg('운동을 최소 한 개는 입력해 주세요.', true);
     document.querySelector('#suGoals .sname').focus();
     return;
+  }
+
+  /* 1-b) 처음 보는 이름이면 새 사용자로 시작한다 (예전 사용자 기록은 그대로 보관) */
+  var creating = (setup && newKey !== curKey);
+  if(creating){
+    if(!confirm(userLabel(newKey) + ' 은(는) 새 사용자입니다.\n\n'
+      + '[확인] 빈 기록으로 새로 시작합니다.\n'
+      + '        ' + userLabel(curKey) + ' 의 기록은 그대로 보관되고,\n'
+      + '        이름을 다시 ' + userLabel(curKey) + ' 로 적으면 돌아옵니다.\n'
+      + '[취소] 그대로 두기')) return;
+    all.users[newKey] = { goals:[], retired:[], data:{} };
+    all.current = newKey;
+    bindCurrent();
+    /* 새 사용자에서는 아이디를 처음부터 다시 매긴다 */
+    var fresh = [], freshIds = [];
+    picked.forEach(function(g){
+      var id = newGoalId(freshIds);
+      freshIds.push(id);
+      fresh.push({ id:id, name:g.name, target:g.target, names:[g.name] });
+    });
+    goals = fresh;
   }
 
   /* 빠지는 운동이 있으면 알려 주고, 나중에 되찾을 수 있게 보관한다 */
@@ -903,7 +1125,8 @@ function saveSetupFromForm(){
         + '나중에 같은 이름으로 다시 넣으면 기록이 되돌아옵니다.\n\n계속할까요?')) return;
     }
     /* 새로 빠진 것 + 예전에 빠진 것 (지금 쓰는 아이디는 제외) */
-    retired = gone.concat(setup.retired || []).filter(function(g){ return !kept[g.id]; });
+    retired = gone.concat(setup.retired || []).filter(function(g){ return !kept[g.id]; })
+      .map(function(g){ return { id:g.id, name:g.name, target:g.target, names:nameList(g) }; });
     var seen = {};
     retired = retired.filter(function(g){
       if(seen[g.id]) return false;
@@ -912,22 +1135,34 @@ function saveSetupFromForm(){
     }).slice(0, 10);
   }
 
-  setup = { name: document.getElementById('suName').value.trim(), goals: goals, retired: retired };
-  saveSetup();
-  GOALS = buildGoals();
+  /* 이름만 바뀐 경우(같은 사용자 이름 변경)는 사용자 키도 함께 옮긴다 */
+  if(!creating && setup && newKey !== curKey){
+    delete all.users[curKey];
+  }
+  if(!all.users[newKey]) all.users[newKey] = { goals:[], retired:[], data:(creating ? {} : data) };
+  all.current = newKey;
+  all.users[newKey] = { goals:goals, retired:retired, data:(creating ? {} : data) };
+  bindCurrent();
+  save();
+  /* 저장된 형태로 다시 읽어 화면과 저장 내용을 항상 일치시킨다 */
+  loadSetup();
   applyIdentity();
   closeSetup();
   render();
   setStatus(canStore, setupFirstRun ? '설정을 저장했습니다 — 이제 체크해 보세요'
-                                    : '운동 설정을 저장했습니다');
+                                    : (creating ? userLabel(newKey) + ' 사용자로 시작합니다'
+                                               : '운동 설정을 저장했습니다'));
 }
 
 /* ---------- 백업 파일 저장 / 불러오기 ---------- */
 function exportJSON(){
   var payload = {
     app: 'workoutCheck',
-    version: 3,
+    version: 4,
     savedAt: new Date().toISOString(),
+    current: all.current,
+    users: all.users,
+    /* 예전 버전에서도 읽히도록 지금 사용자 것을 함께 담는다 */
     setup: setup,
     data: data
   };
@@ -981,6 +1216,32 @@ function importJSON(file){
     var parsed;
     try{ parsed = JSON.parse(r.result); }
     catch(e){ alert('백업 파일을 읽을 수 없습니다. JSON 형식이 아닙니다.'); return; }
+    /* 사용자별 백업이면 전체를 되살릴지 물어본다 */
+    if(parsed && parsed.users && Object.keys(parsed.users).length){
+      var list = Object.keys(parsed.users).map(userLabel).join(', ');
+      if(confirm('백업에 사용자 ' + Object.keys(parsed.users).length + '명이 있습니다.\n\n' + list
+        + '\n\n[확인] 전체를 백업 내용으로 되살리기 (지금 내용은 사라집니다)\n'
+        + '[취소] 지금 사용자의 기록만 합치기')){
+        var restored = { current:String(parsed.current || ''), users:{} };
+        Object.keys(parsed.users).forEach(function(nm){
+          var u = parsed.users[nm] || {};
+          var gs = normGoals(u.goals, MAX_GOALS);
+          if(!gs.length) return;
+          restored.users[String(nm)] = { goals:gs, retired:normGoals(u.retired, 10), data:normData(u.data) };
+        });
+        var ks = Object.keys(restored.users);
+        if(!ks.length){ alert('백업에서 읽을 수 있는 사용자가 없습니다.'); return; }
+        if(!restored.users[restored.current]) restored.current = ks[0];
+        all = restored;
+        bindCurrent();
+        save();
+        applyIdentity();
+        render();
+        alert('사용자 ' + ks.length + '명을 되살렸습니다.');
+        return;
+      }
+    }
+
     var incoming = (parsed && parsed.data) ? parsed.data : parsed;
     if(!incoming || typeof incoming !== 'object'){ alert('운동 기록 형식이 아닙니다.'); return; }
 
@@ -1497,10 +1758,12 @@ document.getElementById('prevWeek').onclick = function(){ anchor = addDays(ancho
 document.getElementById('nextWeek').onclick = function(){ anchor = addDays(anchor, 7); render(); };
 document.getElementById('thisWeek').onclick = function(){ anchor = mondayOf(new Date()); render(); };
 document.getElementById('resetBtn').onclick = function(){
-  if(confirm('저장된 계획과 기록을 모두 삭제할까요?\n되돌릴 수 없습니다. 필요하면 먼저 [백업 저장]을 눌러 주세요.')){
-    data = {};
+  if(confirm(userLabel(all.current) + ' 사용자의 계획과 기록을 모두 삭제할까요?\n'
+    + '다른 사용자의 기록은 그대로 남습니다.\n'
+    + '되돌릴 수 없습니다. 필요하면 먼저 [백업 저장]을 눌러 주세요.')){
+    all.users[all.current].data = {};
+    bindCurrent();
     save();
-    try{ localStorage.removeItem(OLD_KEY); }catch(e){}
     render();
   }
 };
@@ -1560,11 +1823,13 @@ document.getElementById('importFile').onchange = function(){
 };
 
 /* ---------- 시작 ---------- */
-setup = loadSetup();
-/* 설정은 없지만 예전 기록이 남아 있으면 그때 쓰던 세 종목으로 채운다 */
-if(!setup && Object.keys(data).length){
-  setup = { name:'', goals:LEGACY.goals.slice() };
-  saveSetup();
+all = loadAll();
+bindCurrent();
+/* 예전 형식에서 옮겨왔다면 새 형식으로 한 번 저장해 둔다 */
+if(setup){
+  var hasNew = false;
+  try{ hasNew = !!localStorage.getItem(USERS_KEY); }catch(e){}
+  if(!hasNew) save();
 }
 
 if(!setup){
@@ -1572,7 +1837,6 @@ if(!setup){
   /* 모바일은 키보드가 바로 올라와 거슬리므로 넓은 화면에서만 커서를 놓는다 */
   if(window.innerWidth > 560) document.getElementById('suName').focus();
 }else{
-  GOALS = buildGoals();
   applyIdentity();
   closeSetup();
   render();
